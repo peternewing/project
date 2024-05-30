@@ -173,6 +173,107 @@ function invite_friend_to_event($mysqli, $event_id, $friend_username) {
     return false;
 }
 
+// Accept an event invite
+function accept_event_invite($mysqli, $user_id, $event_id) {
+    // Update the invitations table
+    $sql = "UPDATE invitations SET status = 'accepted' WHERE event_id = ? AND user_id = ?";
+    $stmt = $mysqli->prepare($sql);
+    if (!$stmt) {
+        error_log("Prepare failed for update invitations: (" . $mysqli->errno . ") " . $mysqli->error);
+        return false;
+    }
+    $stmt->bind_param("ii", $event_id, $user_id);
+    if (!$stmt->execute()) {
+        error_log("Execute failed for update invitations: (" . $stmt->errno . ") " . $stmt->error);
+        return false;
+    }
+
+    // Insert into event_attendees table
+    $sql_insert = "INSERT INTO event_attendees (event_id, user_id) VALUES (?, ?)";
+    $stmt_insert = $mysqli->prepare($sql_insert);
+    if (!$stmt_insert) {
+        error_log("Prepare failed for insert event_attendees: (" . $mysqli->errno . ") " . $mysqli->error);
+        return false;
+    }
+    $stmt_insert->bind_param("ii", $event_id, $user_id);
+    if (!$stmt_insert->execute()) {
+        error_log("Execute failed for insert event_attendees: (" . $stmt_insert->errno . ") " . $stmt_insert->error);
+        return false;
+    }
+
+    // Update attendees count
+    $sql_update = "UPDATE events SET attendees_count = attendees_count + 1 WHERE id = ?";
+    $stmt_update = $mysqli->prepare($sql_update);
+    if (!$stmt_update) {
+        error_log("Prepare failed for update attendees_count: (" . $mysqli->errno . ") " . $mysqli->error);
+        return false;
+    }
+    $stmt_update->bind_param("i", $event_id);
+    if (!$stmt_update->execute()) {
+        error_log("Execute failed for update attendees_count: (" . $stmt_update->errno . ") " . $stmt_update->error);
+        return false;
+    }
+
+    return true;
+}
+
+// Fetch event details by event ID
+function get_event_by_id($mysqli, $event_id) {
+    $sql = "SELECT events.*, users.username 
+            FROM events 
+            JOIN users ON events.user_id = users.id 
+            WHERE events.id = ?";
+    $stmt = $mysqli->prepare($sql);
+    if (!$stmt) {
+        error_log("Prepare failed for get_event_by_id: (" . $mysqli->errno . ") " . $mysqli->error);
+        return false;
+    }
+    $stmt->bind_param("i", $event_id);
+    if (!$stmt->execute()) {
+        error_log("Execute failed for get_event_by_id: (" . $stmt->errno . ") " . $stmt->error);
+        return false;
+    }
+    return $stmt->get_result()->fetch_assoc();
+}
+
+// Fetch all events for a user
+function fetch_events($mysqli, $user_id) {
+    $sql = "
+    SELECT events.*, users.username, 
+           (SELECT COUNT(*) FROM event_attendees WHERE event_attendees.event_id = events.id) + 1 AS attendees_count
+    FROM events 
+    JOIN users ON events.user_id = users.id 
+    WHERE events.visibility = 'public' 
+       OR events.user_id = ? 
+       OR EXISTS (SELECT 1 FROM event_attendees WHERE event_attendees.event_id = events.id AND event_attendees.user_id = ?)
+    ORDER BY events.event_time DESC";
+    $stmt = $mysqli->prepare($sql);
+    if (!$stmt) {
+        error_log("Prepare failed: (" . $mysqli->errno . ") " . $mysqli->error);
+        return false;
+    }
+    $stmt->bind_param("ii", $user_id, $user_id);
+    $stmt->execute();
+    return $stmt->get_result();
+}
+
+// Fetch public events
+function fetch_public_events($mysqli) {
+    $sql = "
+    SELECT events.*, users.username 
+    FROM events 
+    JOIN users ON events.user_id = users.id 
+    WHERE events.visibility = 'public' 
+    ORDER BY events.event_time DESC";
+    $stmt = $mysqli->prepare($sql);
+    if (!$stmt) {
+        error_log("Prepare failed: (" . $mysqli->errno . ") " . $mysqli->error);
+        return false;
+    }
+    $stmt->execute();
+    return $stmt->get_result();
+}
+
 // Get notifications for a user
 function get_notifications($mysqli, $user_id) {
     $sql = "SELECT notifications.*, users.username 
@@ -248,56 +349,6 @@ function get_user_by_username($mysqli, $username) {
     $stmt->bind_param("s", $username);
     $stmt->execute();
     return $stmt->get_result()->fetch_assoc();
-}
-
-// Get event information by event ID
-function get_event_by_id($mysqli, $event_id) {
-    $sql = "SELECT * FROM events WHERE id = ?";
-    $stmt = $mysqli->prepare($sql);
-    if (!$stmt) {
-        error_log("Prepare failed: (" . $mysqli->errno . ") " . $mysqli->error);
-        return false;
-    }
-    $stmt->bind_param("i", $event_id);
-    $stmt->execute();
-    return $stmt->get_result()->fetch_assoc();
-}
-
-// Fetch all events for a user
-function fetch_events($mysqli, $user_id) {
-    $sql = "
-    SELECT events.*, users.username 
-    FROM events 
-    JOIN users ON events.user_id = users.id 
-    WHERE events.visibility = 'public' 
-       OR events.user_id = ? 
-       OR EXISTS (SELECT 1 FROM invitations WHERE invitations.event_id = events.id AND invitations.user_id = ? AND invitations.status = 'accepted')
-    ORDER BY events.event_time DESC";
-    $stmt = $mysqli->prepare($sql);
-    if (!$stmt) {
-        error_log("Prepare failed: (" . $mysqli->errno . ") " . $mysqli->error);
-        return false;
-    }
-    $stmt->bind_param("ii", $user_id, $user_id);
-    $stmt->execute();
-    return $stmt->get_result();
-}
-
-// Fetch public events
-function fetch_public_events($mysqli) {
-    $sql = "
-    SELECT events.*, users.username 
-    FROM events 
-    JOIN users ON events.user_id = users.id 
-    WHERE events.visibility = 'public' 
-    ORDER BY events.event_time DESC";
-    $stmt = $mysqli->prepare($sql);
-    if (!$stmt) {
-        error_log("Prepare failed: (" . $mysqli->errno . ") " . $mysqli->error);
-        return false;
-    }
-    $stmt->execute();
-    return $stmt->get_result();
 }
 
 // Promote a user to moderator

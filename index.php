@@ -33,7 +33,7 @@ $eventsQuery = $isLoggedIn ? "
     JOIN users ON events.user_id = users.id 
     WHERE events.visibility = 'public' 
        OR events.user_id = {$_SESSION['user_id']} 
-       OR EXISTS (SELECT 1 FROM invitations WHERE invitations.event_id = events.id AND invitations.user_id = {$_SESSION['user_id']} AND invitations.status = 'accepted')
+       OR EXISTS (SELECT 1 FROM event_attendees WHERE event_attendees.event_id = events.id AND event_attendees.user_id = {$_SESSION['user_id']})
     ORDER BY events.event_time DESC
 " : "
     SELECT events.*, users.username 
@@ -59,17 +59,9 @@ if (isset($_GET['search'])) {
 $notifications = [];
 if ($isLoggedIn) {
     $notifications = get_notifications($mysqli, $_SESSION['user_id']);
-    $unread_count = 0;
-    while ($notification = $notifications->fetch_assoc()) {
-        if (!$notification['is_read']) {
-            $unread_count++;
-        }
-    }
-    // Reset result pointer to fetch again in the notifications page
-    $notifications->data_seek(0);
 }
 
-// Fetch friends
+// Get friends
 $friends = [];
 if ($isLoggedIn) {
     $friends = get_friends($mysqli, $_SESSION['user_id']);
@@ -88,8 +80,27 @@ if ($isLoggedIn) {
     <nav>
         <a href="index.php">Home</a>
         <?php if ($isLoggedIn): ?>
-            <a href="notifications.php">Notifications (<?php echo $unread_count; ?>)</a>
             <a href="logout.php">Logout</a>
+            <div class="notifications">
+                <span>Notifications</span>
+                <ul>
+                    <?php if ($notifications && $notifications->num_rows > 0): ?>
+                        <?php while ($notification = $notifications->fetch_assoc()): ?>
+                            <li>
+                                <?php echo htmlspecialchars($notification['content']); ?>
+                                <?php if ($notification['type'] == 'friend_request'): ?>
+                                    <button class="accept-friend-request" data-friend-username="<?php echo htmlspecialchars($notification['username']); ?>">Accept</button>
+                                <?php endif; ?>
+                                <?php if ($notification['type'] == 'event_invite'): ?>
+                                    <button class="accept-event-invite" data-event-id="<?php echo htmlspecialchars($notification['event_id']); ?>">Accept</button>
+                                <?php endif; ?>
+                            </li>
+                        <?php endwhile; ?>
+                    <?php else: ?>
+                        <li>No notifications</li>
+                    <?php endif; ?>
+                </ul>
+            </div>
         <?php else: ?>
             <a href="login.php">Login</a>
             <a href="register.php">Register</a>
@@ -139,16 +150,18 @@ if ($isLoggedIn) {
 
         <h2>Your Friends</h2>
         <ul id="friends-list">
-            <?php if (!empty($friends)): ?>
-                <?php while($friend = $friends->fetch_assoc()): ?>
+            <?php if ($friends && $friends->num_rows > 0): ?>
+                <?php while ($friend = $friends->fetch_assoc()): ?>
                     <li><?php echo htmlspecialchars($friend['username']); ?></li>
                 <?php endwhile; ?>
+            <?php else: ?>
+                <li>No friends yet.</li>
             <?php endif; ?>
         </ul>
     <?php endif; ?>
 
     <h2>Events</h2>
-    <ul>
+    <ul id="events-list">
         <?php while($event = $events->fetch_assoc()): ?>
             <li>
                 <h3><?php echo htmlspecialchars($event['title']); ?></h3>
@@ -156,7 +169,8 @@ if ($isLoggedIn) {
                 <p>Location: <?php echo htmlspecialchars($event['location']); ?></p>
                 <p>Time: <?php echo htmlspecialchars($event['event_time']); ?></p>
                 <p>Shared by: <?php echo htmlspecialchars($event['username']); ?></p>
-                <?php if ($isLoggedIn && $event['visibility'] == 'private' && $event['user_id'] == $_SESSION['user_id']): ?>
+                <p>Attending: <?php echo htmlspecialchars($event['attendees_count']); ?></p>
+                <?php if ($event['visibility'] == 'private' && $event['user_id'] == $_SESSION['user_id']): ?>
                     <button class="invite-button" data-event-id="<?php echo htmlspecialchars($event['id']); ?>">Invite a Friend</button>
                 <?php endif; ?>
             </li>
@@ -164,4 +178,3 @@ if ($isLoggedIn) {
     </ul>
 </body>
 </html>
-

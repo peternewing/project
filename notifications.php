@@ -34,6 +34,8 @@ $notifications = get_notifications($mysqli, $user_id);
                     <p><?php echo htmlspecialchars($notification['content']); ?></p>
                     <?php if ($notification['type'] == 'friend_request' && !$notification['is_read']): ?>
                         <button class="accept-friend-request" data-friend-username="<?php echo htmlspecialchars($notification['username']); ?>">Accept</button>
+                    <?php elseif ($notification['type'] == 'event_invite' && !$notification['is_read']): ?>
+                        <button class="accept-event-invite" data-event-id="<?php echo htmlspecialchars($notification['event_id']); ?>">Accept</button>
                     <?php endif; ?>
                     <button class="mark-as-read" data-notification-id="<?php echo $notification['id']; ?>">Mark as Read</button>
                 </div>
