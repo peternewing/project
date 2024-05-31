@@ -41,7 +41,6 @@ function login_user($mysqli, $username, $password) {
     return false;
 }
 
-// Create a new event
 function create_event($mysqli, $user_id, $title, $details, $location, $event_time, $visibility) {
     $sql = "INSERT INTO events (user_id, title, details, location, event_time, visibility) VALUES (?, ?, ?, ?, ?, ?)";
     $stmt = $mysqli->prepare($sql);
@@ -53,7 +52,6 @@ function create_event($mysqli, $user_id, $title, $details, $location, $event_tim
     return $stmt->execute();
 }
 
-// Search for users
 function search_users($mysqli, $query) {
     $sql = "SELECT id, username, email FROM users WHERE username LIKE ?";
     $stmt = $mysqli->prepare($sql);
@@ -152,13 +150,13 @@ function invite_friend_to_event($mysqli, $event_id, $friend_username) {
     $title = get_event_by_id($mysqli, $event_id)['title'];
     $user_id = $_SESSION['user_id'];
 
-    $sql = "INSERT INTO invitations (event_id, user_id, status) VALUES (?, ?, 'pending')";
+    $sql = "INSERT INTO invitations (event_id, user_id, inviter_id, status) VALUES (?, ?, ?, 'pending')";
     $stmt = $mysqli->prepare($sql);
     if (!$stmt) {
         error_log("Prepare failed: (" . $mysqli->errno . ") " . $mysqli->error);
         return false;
     }
-    $stmt->bind_param("ii", $event_id, $friend_id);
+    $stmt->bind_param("iii", $event_id, $friend_id, $user_id);
     if ($stmt->execute()) {
         $content = "You are invited to the event: $title";
         $sql = "INSERT INTO notifications (user_id, type, content, sender_id) VALUES (?, 'event_invite', ?, ?)";
@@ -173,49 +171,55 @@ function invite_friend_to_event($mysqli, $event_id, $friend_username) {
     return false;
 }
 
-// Accept an event invite
 function accept_event_invite($mysqli, $user_id, $event_id) {
-    // Update the invitations table
-    $sql = "UPDATE invitations SET status = 'accepted' WHERE event_id = ? AND user_id = ?";
-    $stmt = $mysqli->prepare($sql);
-    if (!$stmt) {
-        error_log("Prepare failed for update invitations: (" . $mysqli->errno . ") " . $mysqli->error);
-        return false;
-    }
-    $stmt->bind_param("ii", $event_id, $user_id);
-    if (!$stmt->execute()) {
-        error_log("Execute failed for update invitations: (" . $stmt->errno . ") " . $stmt->error);
-        return false;
-    }
+    $mysqli->autocommit(false);
 
-    // Insert into event_attendees table
-    $sql_insert = "INSERT INTO event_attendees (event_id, user_id) VALUES (?, ?)";
-    $stmt_insert = $mysqli->prepare($sql_insert);
-    if (!$stmt_insert) {
-        error_log("Prepare failed for insert event_attendees: (" . $mysqli->errno . ") " . $mysqli->error);
-        return false;
-    }
-    $stmt_insert->bind_param("ii", $event_id, $user_id);
-    if (!$stmt_insert->execute()) {
-        error_log("Execute failed for insert event_attendees: (" . $stmt_insert->errno . ") " . $stmt_insert->error);
-        return false;
-    }
+    try {
+        // Update the invitations table
+        $sql = "UPDATE invitations SET status = 'accepted' WHERE event_id = ? AND user_id = ?";
+        $stmt = $mysqli->prepare($sql);
+        if (!$stmt) {
+            throw new Exception("Prepare failed for update invitations: (" . $mysqli->errno . ") " . $mysqli->error);
+        }
+        $stmt->bind_param("ii", $event_id, $user_id);
+        if (!$stmt->execute()) {
+            throw new Exception("Execute failed for update invitations: (" . $stmt->errno . ") " . $stmt->error);
+        }
 
-    // Update attendees count
-    $sql_update = "UPDATE events SET attendees_count = attendees_count + 1 WHERE id = ?";
-    $stmt_update = $mysqli->prepare($sql_update);
-    if (!$stmt_update) {
-        error_log("Prepare failed for update attendees_count: (" . $mysqli->errno . ") " . $mysqli->error);
-        return false;
-    }
-    $stmt_update->bind_param("i", $event_id);
-    if (!$stmt_update->execute()) {
-        error_log("Execute failed for update attendees_count: (" . $stmt_update->errno . ") " . $stmt_update->error);
-        return false;
-    }
+        // Insert into event_attendees table
+        $sql_insert = "INSERT INTO event_attendees (event_id, user_id) VALUES (?, ?)";
+        $stmt_insert = $mysqli->prepare($sql_insert);
+        if (!$stmt_insert) {
+            throw new Exception("Prepare failed for insert event_attendees: (" . $mysqli->errno . ") " . $mysqli->error);
+        }
+        $stmt_insert->bind_param("ii", $event_id, $user_id);
+        if (!$stmt_insert->execute()) {
+            throw new Exception("Execute failed for insert event_attendees: (" . $stmt_insert->errno . ") " . $stmt_insert->error);
+        }
 
-    return true;
+        // Update attendees count
+        $sql_update = "UPDATE events SET attendees_count = attendees_count + 1 WHERE id = ?";
+        $stmt_update = $mysqli->prepare($sql_update);
+        if (!$stmt_update) {
+            throw new Exception("Prepare failed for update attendees_count: (" . $mysqli->errno . ") " . $mysqli->error);
+        }
+        $stmt_update->bind_param("i", $event_id);
+        if (!$stmt_update->execute()) {
+            throw new Exception("Execute failed for update attendees_count: (" . $stmt_update->errno . ") " . $stmt_update->error);
+        }
+
+        $mysqli->commit();
+        return true;
+    } catch (Exception $e) {
+        $mysqli->rollback();
+        error_log($e->getMessage());
+        return false;
+    } finally {
+        $mysqli->autocommit(true);
+    }
 }
+
+
 
 // Fetch event details by event ID
 function get_event_by_id($mysqli, $event_id) {
@@ -300,6 +304,18 @@ function mark_notification_as_read($mysqli, $notification_id) {
         return false;
     }
     $stmt->bind_param("i", $notification_id);
+    return $stmt->execute();
+}
+
+// Mark all notifications as read for a user
+function mark_all_notifications_as_read($mysqli, $user_id) {
+    $sql = "UPDATE notifications SET is_read = 1 WHERE user_id = ?";
+    $stmt = $mysqli->prepare($sql);
+    if (!$stmt) {
+        error_log("Prepare failed: (" . $mysqli->errno . ") " . $mysqli->error);
+        return false;
+    }
+    $stmt->bind_param("i", $user_id);
     return $stmt->execute();
 }
 

@@ -26,9 +26,21 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['title'], $_POST['detai
     }
 }
 
+// Handle friend invitation
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['invite_friend'], $_POST['event_id'], $_POST['friend_username']) && $isLoggedIn) {
+    $event_id = $_POST['event_id'];
+    $friend_username = $_POST['friend_username'];
+    if (invite_friend_to_event($mysqli, $event_id, $_SESSION['user_id'], $friend_username)) {
+        $success = "Invitation sent to $friend_username.";
+    } else {
+        $error = "Failed to send invitation.";
+    }
+}
+
 // Fetch all events
 $eventsQuery = $isLoggedIn ? "
-    SELECT events.*, users.username 
+    SELECT events.*, users.username, 
+           (SELECT COUNT(*) FROM event_attendees WHERE event_attendees.event_id = events.id) + 1 AS attendees_count
     FROM events 
     JOIN users ON events.user_id = users.id 
     WHERE events.visibility = 'public' 
@@ -86,12 +98,11 @@ if ($isLoggedIn) {
                 <ul>
                     <?php if ($notifications && $notifications->num_rows > 0): ?>
                         <?php while ($notification = $notifications->fetch_assoc()): ?>
-                            <li>
+                            <li class="notification-item">
                                 <?php echo htmlspecialchars($notification['content']); ?>
                                 <?php if ($notification['type'] == 'friend_request'): ?>
                                     <button class="accept-friend-request" data-friend-username="<?php echo htmlspecialchars($notification['username']); ?>">Accept</button>
-                                <?php endif; ?>
-                                <?php if ($notification['type'] == 'event_invite'): ?>
+                                <?php elseif ($notification['type'] == 'event_invite'): ?>
                                     <button class="accept-event-invite" data-event-id="<?php echo htmlspecialchars($notification['event_id']); ?>">Accept</button>
                                 <?php endif; ?>
                             </li>
@@ -171,7 +182,11 @@ if ($isLoggedIn) {
                 <p>Shared by: <?php echo htmlspecialchars($event['username']); ?></p>
                 <p>Attending: <?php echo htmlspecialchars($event['attendees_count']); ?></p>
                 <?php if ($event['visibility'] == 'private' && $event['user_id'] == $_SESSION['user_id']): ?>
-                    <button class="invite-button" data-event-id="<?php echo htmlspecialchars($event['id']); ?>">Invite a Friend</button>
+                    <form action="index.php" method="post" class="invite-form">
+                        <input type="hidden" name="event_id" value="<?php echo htmlspecialchars($event['id']); ?>">
+                        <input type="text" name="friend_username" placeholder="Friend's username" required>
+                        <button type="submit" name="invite_friend">Invite</button>
+                    </form>
                 <?php endif; ?>
             </li>
         <?php endwhile; ?>

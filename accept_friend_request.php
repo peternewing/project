@@ -1,17 +1,23 @@
 <?php
+session_start();
 include __DIR__ . '/includes/config.php';
 include __DIR__ . '/includes/functions.php';
 
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_SESSION['user_id'])) {
-    $user_id = $_SESSION['user_id'];
+$response = ['success' => false, 'message' => ''];
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['friend_username']) && isset($_SESSION['user_id'])) {
     $friend_username = $_POST['friend_username'];
+    $user_id = $_SESSION['user_id'];
 
     if (accept_friend_request($mysqli, $user_id, $friend_username)) {
-        echo json_encode(['success' => true, 'friend_username' => $friend_username]);
+        $response['success'] = true;
+        $response['message'] = 'Friend request accepted.';
     } else {
-        echo json_encode(['success' => false, 'message' => 'Failed to accept friend request.']);
+        $response['message'] = 'Failed to accept friend request.';
     }
 } else {
-    echo json_encode(['success' => false, 'message' => 'Invalid request.']);
+    $response['message'] = 'Invalid request.';
 }
+
+echo json_encode($response);
 ?>
