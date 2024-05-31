@@ -131,8 +131,10 @@ document.addEventListener("DOMContentLoaded", function() {
         const button = event.target;
         const eventId = button.dataset.eventId;
 
+        console.log("Accepting event invitation for event ID:", eventId);  // Logging event ID for debugging
+
         const xhr = new XMLHttpRequest();
-        xhr.open("POST", "accept_event_invite.php", true);
+        xhr.open("POST", "index.php", true);
         xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
         xhr.onload = function() {
             if (xhr.status === 200) {
@@ -319,3 +321,4 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     }
 });
+

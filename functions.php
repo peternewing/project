@@ -41,6 +41,7 @@ function login_user($mysqli, $username, $password) {
     return false;
 }
 
+// Create an event
 function create_event($mysqli, $user_id, $title, $details, $location, $event_time, $visibility) {
     $sql = "INSERT INTO events (user_id, title, details, location, event_time, visibility) VALUES (?, ?, ?, ?, ?, ?)";
     $stmt = $mysqli->prepare($sql);
@@ -52,6 +53,7 @@ function create_event($mysqli, $user_id, $title, $details, $location, $event_tim
     return $stmt->execute();
 }
 
+// Search users by query
 function search_users($mysqli, $query) {
     $sql = "SELECT id, username, email FROM users WHERE username LIKE ?";
     $stmt = $mysqli->prepare($sql);
@@ -171,6 +173,7 @@ function invite_friend_to_event($mysqli, $event_id, $friend_username) {
     return false;
 }
 
+// Accept an event invite
 function accept_event_invite($mysqli, $user_id, $event_id) {
     $mysqli->autocommit(false);
 
@@ -218,8 +221,6 @@ function accept_event_invite($mysqli, $user_id, $event_id) {
         $mysqli->autocommit(true);
     }
 }
-
-
 
 // Fetch event details by event ID
 function get_event_by_id($mysqli, $event_id) {

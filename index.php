@@ -6,6 +6,19 @@ include __DIR__ . '/includes/functions.php';
 $isLoggedIn = isset($_SESSION['user_id']);
 $error = $success = '';
 
+// Handle event invite acceptance
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['event_id']) && $isLoggedIn) {
+    $event_id = $_POST['event_id'];
+    $user_id = $_SESSION['user_id'];
+
+    if (accept_event_invite($mysqli, $user_id, $event_id)) {
+        echo json_encode(['success' => true, 'event' => get_event_by_id($mysqli, $event_id)]);
+    } else {
+        echo json_encode(['success' => false, 'message' => 'Failed to accept event invitation.']);
+    }
+    exit;
+}
+
 // Handle event form submission
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['title'], $_POST['details'], $_POST['location'], $_POST['event_time'], $_POST['visibility']) && $isLoggedIn) {
     $title = $_POST['title'];
@@ -30,7 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['title'], $_POST['detai
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['invite_friend'], $_POST['event_id'], $_POST['friend_username']) && $isLoggedIn) {
     $event_id = $_POST['event_id'];
     $friend_username = $_POST['friend_username'];
-    if (invite_friend_to_event($mysqli, $event_id, $_SESSION['user_id'], $friend_username)) {
+    if (invite_friend_to_event($mysqli, $event_id, $friend_username)) {
         $success = "Invitation sent to $friend_username.";
     } else {
         $error = "Failed to send invitation.";
@@ -38,27 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['invite_friend'], $_POS
 }
 
 // Fetch all events
-$eventsQuery = $isLoggedIn ? "
-    SELECT events.*, users.username, 
-           (SELECT COUNT(*) FROM event_attendees WHERE event_attendees.event_id = events.id) + 1 AS attendees_count
-    FROM events 
-    JOIN users ON events.user_id = users.id 
-    WHERE events.visibility = 'public' 
-       OR events.user_id = {$_SESSION['user_id']} 
-       OR EXISTS (SELECT 1 FROM event_attendees WHERE event_attendees.event_id = events.id AND event_attendees.user_id = {$_SESSION['user_id']})
-    ORDER BY events.event_time DESC
-" : "
-    SELECT events.*, users.username 
-    FROM events 
-    JOIN users ON events.user_id = users.id 
-    WHERE events.visibility = 'public' 
-    ORDER BY events.event_time DESC
-";
-
-$events = $mysqli->query($eventsQuery);
-if (!$events) {
-    die('Error executing query: ' . $mysqli->error);
-}
+$events = $isLoggedIn ? fetch_events($mysqli, $_SESSION['user_id']) : fetch_public_events($mysqli);
 
 // Handle user search
 $search_results = [];
@@ -95,7 +88,7 @@ if ($isLoggedIn) {
             <a href="logout.php">Logout</a>
             <div class="notifications">
                 <span>Notifications</span>
-                <ul>
+                <ul class="notifications-list">
                     <?php if ($notifications && $notifications->num_rows > 0): ?>
                         <?php while ($notification = $notifications->fetch_assoc()): ?>
                             <li class="notification-item">
